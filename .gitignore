@@ -1,0 +1,21 @@
+.settings
+.project
+.classpath
+.metadata
+.recommenders
+
+# Intellij
+.idea/
+*.iml
+*.iws
+
+# Maven
+log/
+target/
+*.log
+
+# vim
+*~
+
+# git merge temporary files
+*.orig
