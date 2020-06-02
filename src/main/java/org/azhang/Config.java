@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.JpaVendorAdapter;
@@ -17,6 +16,8 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 
 import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.util.Properties;
 
 @Configuration
 @PropertySource("classpath:application.properties")
@@ -42,10 +43,25 @@ public class Config {
                                  @Value("${spring.datasource.username}") String username,
                                  @Value("${spring.datasource.password}") String password) {
         BasicDataSource ds = new BasicDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setUrl(url);
-        ds.setUsername(username);
-        ds.setPassword(password);
+        Properties prop = new Properties();
+
+        try {
+            prop.load(Config.class.getClassLoader().getResourceAsStream("application.properties"));
+            ds.setDriverClassName(prop.getProperty("spring.datasource.driver"));
+            ds.setUrl(prop.getProperty("spring.datasource.url"));
+            ds.setUsername(prop.getProperty("spring.datasource.username"));
+            ds.setPassword(prop.getProperty("spring.datasource.password"));
+            ds.setMinEvictableIdleTimeMillis(Long.parseLong(prop.getProperty("minEvictableIdleTimeMillis")));
+            ds.setDefaultQueryTimeout(Integer.parseInt(prop.getProperty("defaultQueryTimeoutSeconds")));
+            ds.setInitialSize(Integer.parseInt(prop.getProperty("initialSize")));
+            ds.setMaxTotal(Integer.parseInt(prop.getProperty("maxActive")));
+            ds.setMaxIdle(Integer.parseInt(prop.getProperty("maxIdle")));
+            ds.setMinIdle(Integer.parseInt(prop.getProperty("minIdle")));
+            ds.setMaxWaitMillis(Integer.parseInt(prop.getProperty("maxWait")));
+        } catch(IOException e){
+            System.out.println("Fail to read db configuration: " + e.getMessage());
+        }
+
         return ds;
     }
 
