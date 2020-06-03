@@ -1,4 +1,4 @@
-package org.azhang;
+package org.azhang.config;
 
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,9 +39,7 @@ public class Config {
 
     @Bean
     @Profile("DataSourceWithApacheConnectionPool")
-    public DataSource dataSource1(@Value("${spring.datasource.url}") String url,
-                                 @Value("${spring.datasource.username}") String username,
-                                 @Value("${spring.datasource.password}") String password) {
+    public DataSource dataSource1() {
         BasicDataSource ds = new BasicDataSource();
         Properties prop = new Properties();
 
