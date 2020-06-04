@@ -1,7 +1,6 @@
 package org.azhang.config;
 
 import org.apache.commons.dbcp2.BasicDataSource;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -16,8 +15,6 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 
 import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
-import java.io.IOException;
-import java.util.Properties;
 
 @Configuration
 @PropertySource("classpath:application.properties")
@@ -25,15 +22,12 @@ import java.util.Properties;
 public class Config {
     @Bean
     @Profile("DataSourceWithoutConnectionPool")
-    public DataSource dataSource(@Value("${spring.datasource.url}") String url,
-                                 @Value("${spring.datasource.username}") String username,
-                                 @Value("${spring.datasource.password}") String password) {
+    public DataSource dataSource() {
         DriverManagerDataSource ds = new DriverManagerDataSource();
-        System.out.println(com.mysql.cj.jdbc.Driver.class);
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setUrl(url);
-        ds.setUsername(username);
-        ds.setPassword(password);
+        ds.setDriverClassName(DBConfig.getDriverClassName());
+        ds.setUrl(DBConfig.getUrl());
+        ds.setUsername(DBConfig.getUsername());
+        ds.setPassword(DBConfig.getPassword());
         return ds;
     }
 
@@ -41,25 +35,17 @@ public class Config {
     @Profile("DataSourceWithApacheConnectionPool")
     public DataSource dataSource1() {
         BasicDataSource ds = new BasicDataSource();
-        Properties prop = new Properties();
-
-        try {
-            prop.load(Config.class.getClassLoader().getResourceAsStream("application.properties"));
-            ds.setDriverClassName(prop.getProperty("spring.datasource.driver"));
-            ds.setUrl(prop.getProperty("spring.datasource.url"));
-            ds.setUsername(prop.getProperty("spring.datasource.username"));
-            ds.setPassword(prop.getProperty("spring.datasource.password"));
-            ds.setMinEvictableIdleTimeMillis(Long.parseLong(prop.getProperty("minEvictableIdleTimeMillis")));
-            ds.setDefaultQueryTimeout(Integer.parseInt(prop.getProperty("defaultQueryTimeoutSeconds")));
-            ds.setInitialSize(Integer.parseInt(prop.getProperty("initialSize")));
-            ds.setMaxTotal(Integer.parseInt(prop.getProperty("maxActive")));
-            ds.setMaxIdle(Integer.parseInt(prop.getProperty("maxIdle")));
-            ds.setMinIdle(Integer.parseInt(prop.getProperty("minIdle")));
-            ds.setMaxWaitMillis(Integer.parseInt(prop.getProperty("maxWait")));
-        } catch(IOException e){
-            System.out.println("Fail to read db configuration: " + e.getMessage());
-        }
-
+        ds.setDriverClassName(DBConfig.getDriverClassName());
+        ds.setUrl(DBConfig.getUrl());
+        ds.setUsername(DBConfig.getUsername());
+        ds.setPassword(DBConfig.getPassword());
+        ds.setMinEvictableIdleTimeMillis(DBConfig.getMinEvictableIdleTimeMillis());
+        ds.setDefaultQueryTimeout(DBConfig.getDefaultQueryTimeout());
+        ds.setInitialSize(DBConfig.getInitialSize());
+        ds.setMaxTotal(DBConfig.getMaxTotal());
+        ds.setMaxIdle(DBConfig.getMaxIdle());
+        ds.setMinIdle(DBConfig.getMinIdle());
+        ds.setMaxWaitMillis(DBConfig.getMaxWaitMillis());
         return ds;
     }
 
