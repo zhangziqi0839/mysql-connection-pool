@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.util.Objects;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
@@ -23,61 +24,108 @@ import java.util.logging.Logger;
 @Profile("DataSourceWithImplementedConnectionPool")
 public class TestDataSource implements DataSource {
     private static final org.slf4j.Logger logger = LoggerFactory.getLogger(TestDataSource.class);
-    private final Vector<Connection> connections = new Vector<Connection>();
-    private final AtomicInteger numOfConnections;
+    private Vector<Connection> connections = new Vector<Connection>();
+    private AtomicInteger numOfConnections = new AtomicInteger();
+    private ThreadLocal<Connection> threadLocalConnection = new ThreadLocal<Connection>();
+    private final int MAX_RETRY = 3;
 
     @Inject
+    // Initialize connection pool
     public TestDataSource() {
         int initialSize = DBConfig.getInitialSize();
-        numOfConnections = new AtomicInteger(initialSize);
         for (int i = 0; i < initialSize; i++) {
             try {
-                createNewConnection();
+                connections.add(createNewConnection());
             } catch (SQLException e) {
                 logger.error("Fail to connect Mysql.", e);
             }
         }
     }
 
-    public Connection getConnection() throws SQLException {
-        if (connections.size() > 0) {
-            final Connection connection = connections.firstElement();
-            connections.remove(0);
-            logger.info("Get connection, connection pool size is : {}", connections.size());
+    public synchronized Connection getConnection() throws SQLException {
+        return getConnection(0);
+    }
 
-            return (Connection) Proxy.newProxyInstance(TestDataSource.class.getClassLoader(),
-                    connection.getClass().getInterfaces(),
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            if (method.getName().equalsIgnoreCase("close")) {
-                                connections.add(connection);
-                                logger.info("Connection returns to connection pool, pool size is : {}", connections.size());
-                                return null;
-                            } else {
-                                return method.invoke(connection, args);
+    private synchronized Connection getConnection(int retryTimes) throws SQLException {
+        Connection conn = threadLocalConnection.get();
+        if (isEnabled(conn)) {
+            return conn;
+        }
+
+        if (numOfConnections.get() < DBConfig.getMaxTotal()) {
+            if (connections.size() > 0) {
+                // If there are idle connections in the pool, get connection from pool
+                final Connection connection;
+                if (isEnabled(connections.firstElement())) {
+                    connection = connections.firstElement();
+                } else {
+                    numOfConnections.getAndDecrement();
+                    connection = createNewConnection();
+                }
+                connections.remove(0);
+
+                logger.info("Get connection, connection pool size is : {}", connections.size());
+                // If idle connections are less than minIdle, create a new one
+                if (connections.size() < DBConfig.getMinIdle()) {
+                    connections.add(createNewConnection());
+                }
+
+                // Use proxy instance to operate on connection
+                conn = (Connection) Proxy.newProxyInstance(TestDataSource.class.getClassLoader(),
+                        connection.getClass().getInterfaces(),
+                        new InvocationHandler() {
+                            @Override
+                            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                                if (method.getName().equalsIgnoreCase("close")) {
+                                    // TODO: is this thread safe?
+                                    if (connections.size() >= DBConfig.getMaxIdle()) {
+                                        // If idle connections are >= maxIdle, close the returned connection
+                                        connection.close();
+                                        numOfConnections.getAndDecrement();
+                                        logger.info("Close connection: {}", connection);
+                                    } else {
+                                        // else put it back to pool
+                                        connections.add(connection);
+                                        logger.info("Connection returns to connection pool, pool size is : {}", connections.size());
+                                    }
+                                    return null;
+                                } else {
+                                    return method.invoke(connection, args);
+                                }
                             }
-                        }
-                    });
-        } else if (numOfConnections.get() < DBConfig.getMaxTotal()) {
-            Connection connection = createNewConnection();
-            numOfConnections.getAndIncrement();
-            return connection;
+                        });
+            } else
+                // If there are no idle connections and total < maxTotal, create a new connection
+                conn = createNewConnection();
         } else {
+            // If total connections = maxTotal, wait for maxWaitMillis and retry retrieving connection
+            if (retryTimes == MAX_RETRY) {
+                throw new RuntimeException("Couldn't get connection since the pool is busy.");
+            }
             try {
-                wait(1000L);
+                wait(DBConfig.getMaxWaitMillis());
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            return getConnection();
+            conn = getConnection(++retryTimes);
         }
+
+        threadLocalConnection.set(conn);
+        return conn;
     }
 
     private Connection createNewConnection() throws SQLException {
         Connection connection = DriverManager.getConnection(DBConfig.getUrl(), DBConfig.getUsername(), DBConfig.getPassword());
         logger.info("Get connection: {}.", connection);
-        connections.add(connection);
+        numOfConnections.getAndIncrement();
         return connection;
+    }
+
+    private boolean isEnabled(Connection connection) throws SQLException {
+        if (Objects.isNull(connection)) {
+            return false;
+        }
+        return !connection.isClosed();
     }
 
     public Connection getConnection(String username, String password) throws SQLException {
